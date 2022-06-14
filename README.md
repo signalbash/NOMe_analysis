@@ -16,7 +16,8 @@ Python 3.7.4
 
 Trims fastq files with default parameters, and runs fastQC on trimmed files.
 
-Makes:
+**Makes:**
+
 fastq/trimmed/$SAMPLE_1.fq.gz
 fastq/trimmed/$SAMPLE_2.fq.gz
 
@@ -31,12 +32,14 @@ fastq_file_lines.csv
 We can now align reads to a reference genome. For this step we're using bwameth (https://github.com/brentp/bwa-meth), which builds off bwa-mem (standard aligner). bwameth converts the genome into two seperate genomes - one with C->T conversion, and the other with G->A conversion. The fastq reads also undergo this conversion, so instead of using the typical 3-letter nucleotide alphabet to align, we are only using 3 (for fwd/rev reads).
 
 `bwameth2dedup.sh`
-Requires:
+**Requires:**
+
 indices/bwameth_index/GRCm39_pluslambda.fa(bwameth index)
 ../fastq/trimmed/$SAMPLE_1.fq.gz (trimmed fastq)
 ../fastq/trimmed/$SAMPLE_2.fq.gz (trimmed fastq)
 
-Makes:
+**Makes:**
+
 bams/sorted/"${FILENAME}".sorted.bam
 bams/flagstat/"${FILENAME}".sorted.flagstat
 bams/dedup/"${FILENAME}".dedup.bam
@@ -47,9 +50,11 @@ bams/flagstat/"${FILENAME}".dedup.flagstat
 
 `mosdepth_array.sh`
 
-Makes:
+**Makes:**
+
 mosdepth/"${FILENAME}".mosdepth.summary.txt
-Requires:
+**Requires:**
+
 dedup/"${FILENAME}".dedup.bam
 
 ## Methylation calling
@@ -62,20 +67,24 @@ We use the -N flag as this is NOMe data (helps with downstream splitting into HC
 We then convert the VCF to bed files with either CpG methylation (typical methylation; HCG) or GpC methylation (NOMe methylation; HCG), and remove any regions that overlap blacklisted regions.
 
 converting to bed can require some extra IMPORTANT flags
--k 1 : minimum coverage of 1 (these are some low coverage samples so we don't really want to throw out data)
--t [hcg/gch] : extract all hCG or GCh nts (so both NOMe GpC and CpG sites are covered in seperate files)
--e : show context (so we can tell if this is a GpC/CpG/other)
--s ALL : extract information for **ALL** samples (important if running on a merged VCF)
+
+* -k 1 : minimum coverage of 1 (these are some low coverage samples so we don't really want to throw out data)
+* -t [hcg/gch] : extract all hCG or GCh nts (so both NOMe GpC and CpG sites are covered in seperate files)
+* -e : show context (so we can tell if this is a GpC/CpG/other)
+* -s ALL : extract information for **ALL** samples (important if running on a merged VCF)
+* -m 10 : minimum quality score of 10 required to count reads (default=40)
 
 We also remove blacklisted regions and convert biscuit bed files to tables with C counts and coverage counts (instead of methylation percent). This is to help with downstream processing.
 
 `pileup_to_bed.sh`
 
-Requires:
+**Requires:**
+
 indices/biscuit_index/GRCm39_pluslambda.fa
 bams/dedup/"${FILENAME}".dedup.bam
 
-Makes:
+**Makes:**
+
 "${FILENAME}".merged.dedup.vcf.gz
 "${FILENAME}".merged.dedup.hcg.bed.gz
 "${FILENAME}".merged.dedup.gch.bed.gz
@@ -86,6 +95,7 @@ Makes:
 
 ## Merging methylation calls for all samples
 **splitting by chromosome**
+
 HCG files *can* be combined into a larger table of all samples, as number of CpG sites is lower than GpC sites. However, given high enough coverage, this may not be the case and files may need to be split up by chromosome to process in the available RAM.
 Using grep for unambiguous chromosome names (e.g. chr21) and awk for ambiguous chromsomes (e.g. chr2). grep is much faster than awk.
 
@@ -98,14 +108,17 @@ Makes:
 NOME_bychr/"${FILENAME}".dedup.hcg.formatted.chr[1-22].bed.gz
 
 **merging**
-merge_gch_bysample.sh
-merge_hcg_bysample.sh
+
+`merge_gch_bysample.sh` (runs on single chromosomes)
+`merge_hcg_bysample.sh`
 
 
-Requires:
+**Requires:**
+
 `merge_biscuit_tables.R`
 
-Makes:
+**Makes:**
+
 NOMe.dedup.hcg.bed.gz
 NOMe.dedup.gch.bed.gz
 
