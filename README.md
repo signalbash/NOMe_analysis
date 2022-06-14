@@ -30,40 +30,15 @@ fastq_file_lines.csv
 ## Alignment to genome
 We can now align reads to a reference genome. For this step we're using bwameth (https://github.com/brentp/bwa-meth), which builds off bwa-mem (standard aligner). bwameth converts the genome into two seperate genomes - one with C->T conversion, and the other with G->A conversion. The fastq reads also undergo this conversion, so instead of using the typical 3-letter nucleotide alphabet to align, we are only using 3 (for fwd/rev reads).
 
-`bwameth_array.sh`
+`bwameth2dedup.sh`
 Requires:
-indices/bwameth_index/hg38.fa (bwameth index)
+indices/bwameth_index/GRCm39_pluslambda.fa(bwameth index)
 ../fastq/trimmed/$SAMPLE_1.fq.gz (trimmed fastq)
 ../fastq/trimmed/$SAMPLE_2.fq.gz (trimmed fastq)
 
 Makes:
 bams/sorted/"${FILENAME}".sorted.bam
-flagstat/"${FILENAME}".sorted.flagstat
-
-This should align, then sort and index, and run flagstat on the resulting BAM file.
-
-**Merging of samples sequenced across multiple lanes**
-We merge after alignment as it means the alignment step is performed much quicker, and on par with times for smaller files.
-Merging is done through samtools merge. These files need to be re-sorted following merging. Bams are then deduplicated (PCR duplicates have issues when calling methylation ratios), indexed, and stats gathered using samtools flagstat.
-
-`merge_sorted_bams.sh`
-
-This takes all bam files with a common prefix (in merged.samples.txt) and merges them.
-
-Requires:
-bams/sorted/"${FILENAME}"*.bam
-
-Makes:
-bams/sorted/"${FILENAME}".sortmerge.sorted.bam (merged bam, only sorted and not deduplicated)
-bams/flagstat/"${FILENAME}".sortmerge.sorted.flagstat
-
-bams/dedup/"${FILENAME}".merged.dedup.bam (merged and deduplicated bam)
-bams/flagstat/"${FILENAME}".merged.dedup.flagstat
-
-**Deduplication of bams if merging is not required**
-`deduplicate_bams.sh`
-
-Makes:
+bams/flagstat/"${FILENAME}".sorted.flagstat
 bams/dedup/"${FILENAME}".dedup.bam
 bams/flagstat/"${FILENAME}".dedup.flagstat
 
@@ -73,11 +48,9 @@ bams/flagstat/"${FILENAME}".dedup.flagstat
 `mosdepth_array.sh`
 
 Makes:
-
+mosdepth/"${FILENAME}".mosdepth.summary.txt
 Requires:
-
-### Alignment to (lambda) genome
-Same as above, but aligned to the lambda genome as internal controls.
+dedup/"${FILENAME}".dedup.bam
 
 ## Methylation calling
 We use biscuit to pileup reads and call methylation status (i.e. is the C converted to a T or not).
@@ -99,8 +72,8 @@ We also remove blacklisted regions and convert biscuit bed files to tables with 
 `pileup_to_bed.sh`
 
 Requires:
-indices/biscuit_index/hg38.fa
-bams/dedup/"${FILENAME}".merged.dedup.bam
+indices/biscuit_index/GRCm39_pluslambda.fa
+bams/dedup/"${FILENAME}".dedup.bam
 
 Makes:
 "${FILENAME}".merged.dedup.vcf.gz
@@ -116,83 +89,57 @@ Makes:
 HCG files *can* be combined into a larger table of all samples, as number of CpG sites is lower than GpC sites. However, given high enough coverage, this may not be the case and files may need to be split up by chromosome to process in the available RAM.
 Using grep for unambiguous chromosome names (e.g. chr21) and awk for ambiguous chromsomes (e.g. chr2). grep is much faster than awk.
 
-`./split_GCH_bed_bychrom.sh`
+`./split_gch_bychrom.sh`
+[calls] `split_bed_bychrom.sh`
 
 Requires:
-"${FILENAME}".merged.dedup.hcg.formatted.bed.gz
+"${FILENAME}".dedup.hcg.formatted.bed.gz
 Makes:
-NOME_bychr/"${FILENAME}".merged.dedup.hcg.formatted.chr[1-22].bed.gz
+NOME_bychr/"${FILENAME}".dedup.hcg.formatted.chr[1-22].bed.gz
 
 **merging**
 merge_gch_bysample.sh
 merge_hcg_bysample.sh
+
+
 Requires:
 `merge_biscuit_tables.R`
 
-
-# MINGLE-specific analyses
-
-## Coverage
-`bam_to_bigwig.sh`
-
-Uses deeptools bam Coverage in 10nt blocks. Normalised using RPKM.
-Make profiles around gencode transcripts and plot to PDF.
-Requires:
-"${FILENAME}".sam.bam
 Makes:
-"${FILENAME}".sam.cov10.bw
-"${FILENAME}".gencode.matrix.gz
-"${FILENAME}".profile.pdf
-
-After this, manually check controls etc. if they look typical for peaks.
-
-`bam_to_bigwig_control.sh`
-
-Same as above, but uses an IgG control to control for read coverage.
-
-## Call Peaks
-`peaks_and_stats_narrow.sh`
-`peaks_and_stats_broad.sh`
-
-Calls peaks with MACS2, runs summary R script (`in_peak_meth_summary.R`) to extract CpG and GpC methylation levels from within peaks.
-Requires:
-"${FILENAME}".sam.bam
-Makes:
-"${FILENAME}"_peaks.broadPeak
-OR
-"${FILENAME}"_peaks.narrowPeak
-"${FILENAME}".sam.bam.txt
-
-### Mosdepth coverage in peaks
-
-
-### Check methylation levels in peaks
-
-
-
-
-
-# Scripts for analysing NOMe-Seq data
-
-## QC-checks
-
-
-## Plotting functions
-
-
-## More QC: PCAs, etc.
-
+NOMe.dedup.hcg.bed.gz
+NOMe.dedup.gch.bed.gz
 
 
 ## Differential methylation (DMRs and diff. CpG sites)
-"${FILENAME}".merged.dedup.hcg.formatted.bed.gz
-"${FILENAME}".merged.dedup.gch.formatted.bed.gz
+`dmrs.sh`
+calls
+`dmrs.R`
+
+Calls DMRs (Bsseq)
+
+
 
 ## Nucleosome Occupancy
 
+`nucleosome_processing.sh`
+calls
+`nucleosome_processing.R`
+and runs on a **per-chromosome basis**, otherwise the data is too big.
 
+Calls NDRs per-sample and per-condition.
+Calls based on aaRon findNDRs(), but with updated data returned and window definition.
+window width=140, rolling width=10
+
+#nucleosome_scripts.R ??
+`nucleosome_functions.R`
 
 ## Differential Nucleosome Occupancy (DiNO)
+`diff_nucleosome_functions.R`
+Contains altered functions for calling regions of differential nucleosome occupancy, based off methylsig.
+Currently takes NDR regions as input to pre-filter for regions of interest.
+Differential occupancy is called as the most 'significant' region within a 10kb window. This prevents over-representation of semi-overlapping windows.
+
+
 
 
 ## Annotate Regions
